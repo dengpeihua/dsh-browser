@@ -1,0 +1,15 @@
+# Installed by DSH from this package's dsh.bundle manifest.
+# After npm publication: npx @deepseek-ai/dsh plugin --profile web add dsh-browser-plugin
+- insert:
+    - id: dsh-browser
+      name: dsh-browser-plugin
+      config:
+        headless: false
+        noSandbox: false
+        approvalMode: mutating
+        viewportWidth: 1280
+        viewportHeight: 900
+        toolTimeoutMs: 120000
+        maxWaitSeconds: 300
+        scriptMaxLines: 100
+        scriptMaxBytes: 8192
