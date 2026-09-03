@@ -8,7 +8,7 @@
 
 ## 🇨🇳 中文贡献指南
 
-感谢你改进 `dsh-browser-plugin`。本项目是一个独立的 DeepSeek Harness 插件；贡献内容应保持插件边界，不要把 DeepSeek Harness 或其他 Agent 框架的源码复制进本仓库。
+本项目是一个独立的 DeepSeek Harness 插件。
 
 ### 环境要求
 
@@ -85,38 +85,10 @@ npm run verify:installed
 | Chromium/CDP/DOM | `npm test` + `npm run test:smoke` |
 | 依赖或发布清单 | `npm run check` + `npm pack --dry-run` |
 
-测试结果必须如实报告。静态检查、mock 测试和真实 Chromium 验证是不同证据，不能相互替代。
-
-### Issue 与 Pull Request
-
-请通过 [GitHub Issues](https://github.com/dengpeihua/dsh-browser/issues) 报告问题，并通过 [Pull Requests](https://github.com/dengpeihua/dsh-browser/pulls) 提交补丁。安全问题不要使用公开 Issue，请遵循 [SECURITY.md](SECURITY.md) 的私密报告流程。
-
-较大的功能或破坏性改动应先开 Issue，说明问题、预期行为、安全影响和兼容策略。Pull Request 应：
-
-1. 保持范围小而集中；
-2. 说明修改原因和用户可见变化；
-3. 列出实际运行的验证命令及结果；
-4. 对 DOM、截图或交互变化提供可复现步骤；
-5. 不包含密钥、Cookie、登录态、用户页面内容或本机绝对隐私路径。
-
-建议使用 Conventional Commits：
-
-```text
-feat: add browser history navigation
-fix(dom): preserve selector mapping across incremental snapshots
-docs: clarify local tarball installation
-test: cover session-scoped browser cleanup
-```
-
-安全问题不要提交公开 Issue，请遵循 [SECURITY.md](SECURITY.md)。
-
----
-
-<a id="english-contributing-guide"></a>
 
 ## 🇬🇧 English contributing guide
 
-Thank you for improving `dsh-browser-plugin`. This repository is a standalone DeepSeek Harness plugin. Contributions must preserve that boundary and must not copy a DeepSeek Harness or other Agent-framework checkout into this repository.
+This repository is a standalone DeepSeek Harness plugin. 
 
 ### Requirements
 
@@ -193,27 +165,3 @@ Common commands:
 | Chromium/CDP/DOM | `npm test` plus `npm run test:smoke` |
 | Dependencies or publishing | `npm run check` plus `npm pack --dry-run` |
 
-Report evidence honestly. Static checks, mocked tests, and real Chromium validation are different forms of evidence and do not replace one another.
-
-### Issues and pull requests
-
-Use [GitHub Issues](https://github.com/dengpeihua/dsh-browser/issues) to report problems and [Pull Requests](https://github.com/dengpeihua/dsh-browser/pulls) to submit patches. Do not use a public Issue for security reports; follow the private process in [SECURITY.md](SECURITY.md).
-
-Open an Issue before a large feature or breaking change. Describe the problem, expected behavior, security impact, and compatibility plan. A Pull Request should:
-
-1. remain small and focused;
-2. explain the motivation and user-visible behavior;
-3. list the verification commands actually run and their results;
-4. provide reproducible steps for DOM, screenshot, or interaction changes;
-5. contain no secrets, cookies, login state, user page content, or private local paths.
-
-Conventional Commit examples:
-
-```text
-feat: add browser history navigation
-fix(dom): preserve selector mapping across incremental snapshots
-docs: clarify local tarball installation
-test: cover session-scoped browser cleanup
-```
-
-Do not open a public Issue for a vulnerability. Follow [SECURITY.md](SECURITY.md).
