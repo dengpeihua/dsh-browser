@@ -171,7 +171,7 @@ CDP Snapshot
   → 返回给 Agent
 ```
 
-`browser_restore_state` 只会重新访问快照记录的 URL，不会恢复表单内容、滚动位置、弹窗、选择项或 SPA 内存。
+`browser_restore_state` 使用完整版本号（如 `tab0-dom3.2`）恢复检查点 URL、原生表单值、勾选/下拉选项、details 展开状态，以及主页面和局部容器的滚动位置。恢复后逐项核对；不完整时返回 `partial`。密码、文件选择、iframe、任意弹窗与 SPA 内存不在恢复范围内。
 
 ## 工具清单
 
@@ -180,7 +180,7 @@ CDP Snapshot
 | `browser_start` | 启动浏览器并打开 URL |
 | `browser_goto` | 导航当前标签页 |
 | `browser_refresh` | 刷新当前页面 |
-| `browser_restore_state` | 根据 `stateId` 重新访问历史 URL |
+| `browser_restore_state` | 按精确 `stateId` 恢复可支持的页面状态，并报告未恢复项 |
 | `browser_new_tab` | 新建标签页 |
 | `browser_switch_tab` | 切换活动标签页 |
 | `browser_close_tab` | 关闭一个或多个标签页 |
@@ -248,7 +248,7 @@ npm run verify:installed
 | 命令 | 验证内容 |
 |---|---|
 | `npm test` | 构建、包结构、工具注册、错误契约、approval 和配置测试 |
-| `npm run test:smoke` | 真实启动 Chromium，验证 DOM、脚本、截图、attachment 和清理 |
+| `npm run test:smoke` | 真实 Chromium：DOM、脚本、截图、附件、清理，以及动态/虚拟列表、操作验证和状态恢复 |
 | `npm run test:host` | 真实 Cordis/DSH Agent Loop + Chromium，验证下一轮消息、基线恢复、截图裁剪、回放与会话隔离；模型决策使用确定性适配器 |
 | `npm run verify:package` | 确认 npm 包是独立 DSH bundle 且不包含 Harness checkout |
 | `npm run verify:installed` | 在临时 npm 消费者项目中安装 tarball 并导入插件 |
@@ -265,6 +265,16 @@ Remove-Item Env:DSH_TEST_SESSION_MODULE
 
 ## 9.8 更新
 
+### 浏览可靠性修正：探索、动作结果与检查点
+
+| 问题 | 当前处理 | 如何理解结果 |
+|---|---|---|
+| 动态插入或虚拟列表导致旧“已看”范围失准 | 按完整 DOM 内容、容器身份与尺寸检查覆盖记录；内容或布局变化后舍弃不匹配的历史范围。滚动推进为实际视口的 80%，不再跳过扩展区。 | 表示当前页面版本的视口覆盖，不代表全部业务条目已阅读；完整性任务仍须记录条目 ID。 |
+| 找不到元素、遮挡或输入截断仍被当作成功 | 返回 `error`；输入后读取实际值。点击/输入可指定 `expectText`、`expectUrl`，最多等待 5 秒验证。 | `status=success` 只表示执行未失败；检查 `metadata.verification`，没有后置条件时明确标为未验证。任务完成仍需核对全部用户要求。 |
+| 历史恢复只打开 URL，且同 URL 的多次观察无法区分 | 每次观察保留精确版本 ID 和内存检查点；恢复支持的字段与滚动并逐项检查。 | 缺失、只读或无法恢复的状态返回 `partial`；失效检查点返回 `error`，不会宣称完整恢复。 |
+
+例如：`browser_click({"elementIndex":12,"expectText":"筛选已应用"})`；`browser_restore_state({"stateId":"tab0-dom3.2"})`。检查点只存在于当前浏览器缓存，关闭标签页、重启或缓存淘汰后不可用。详见 [浏览可靠性与验证](docs/reliability.md)。
+
 ### 跨页面任务记忆：先保存事实，再清理 DOM
 
 新增 `browser_record_facts` 和 `browser_recall`，工具总数由 15 个增至 17 个。Agent 可把页面中的实体、字段、值和原文证据保存到当前 DSH Session 日志；来源 URL 与观察时间由 Host 绑定，不接受模型自行声明。
@@ -275,9 +285,9 @@ Remove-Item Env:DSH_TEST_SESSION_MODULE
 
 新增的 `browserRuntime` 由 Host 按 Session 管理独立浏览器，并通过 `agent/pre-step` 在每轮模型调用前保留最新 DOM、必要增量基线和当前截图，替换过期页面内容；缺失的增量基线可由同次观察的完整快照恢复。
 
-`maxContextDeltas` 默认值为 8，用于定期生成完整 DOM 检查点。浏览器重启后旧元素引用失效；本功能不恢复 Chromium 进程、登录状态、表单或 SPA 内存，也不是通用 Agent 记忆系统。
+`maxContextDeltas` 默认值为 8，用于定期生成完整 DOM 检查点。浏览器重启后旧元素引用失效；上下文补齐不会恢复 Chromium 进程、登录状态或 SPA 内存，也不是通用 Agent 记忆系统；原生表单与滚动恢复由独立的 `browser_restore_state` 执行。
 
-9.8 验证结果：34 项测试、17 工具安装导入、真实 Chromium 冒烟及真实 DSH Agent Loop 跨页记忆场景均通过；模型决策使用确定性测试适配器，未调用线上 LLM。
+9.8 验证结果：38 项测试、严格类型检查、17 工具安装导入、真实 Chromium 基础/可靠性场景及真实 DSH Agent Loop 跨页记忆场景均通过。可靠性场景覆盖 60 条虚拟列表、表单与滚动恢复、部分恢复和操作后置条件；模型决策使用确定性测试适配器，未调用线上 LLM。
 
 ## 许可证
 
@@ -439,7 +449,7 @@ CDP Snapshot
   → Agent output
 ```
 
-`browser_restore_state` only revisits the URL recorded by a snapshot. It does not restore form values, scroll position, dialogs, selections, or SPA memory.
+`browser_restore_state` uses the exact versioned checkpoint ID (for example `tab0-dom3.2`) to restore its URL, native form values, checked/selected options, details state, and window/nested scroll positions. It verifies the result and returns `partial` when incomplete. Passwords, file selections, iframe state, arbitrary dialogs and SPA memory are not restored.
 
 ## Tool reference
 
@@ -448,14 +458,14 @@ CDP Snapshot
 | `browser_start` | Launch the browser and open a URL |
 | `browser_goto` | Navigate the active tab |
 | `browser_refresh` | Reload the active page |
-| `browser_restore_state` | Revisit a historical URL by `stateId` |
+| `browser_restore_state` | Restore supported page state using the exact checkpoint `stateId`; report omissions |
 | `browser_new_tab` | Create a tab |
 | `browser_switch_tab` | Change the active tab |
 | `browser_close_tab` | Close one or more tabs |
 | `browser_click` | Click a `[N]` element |
 | `browser_input` | Enter content into a `<N>` element |
 | `browser_reveal_offscreen` | Reveal a known off-screen element |
-| `browser_scroll_next_screen` | Move to the next unexplored screen |
+| `browser_scroll_next_screen` | Advance 80% of the viewport with overlap for loaded content |
 | `browser_scroll_to_page` | Jump to a page position |
 | `browser_execute_script` | Run JavaScript in the page context |
 | `browser_view_elements` | Capture `[view:ID]` visual elements |
@@ -524,7 +534,7 @@ npm run verify:installed
 | Command | Evidence produced |
 |---|---|
 | `npm test` | Build, package shape, tool registration, error contract, approval, and config tests |
-| `npm run test:smoke` | Real Chromium DOM, script, screenshot, attachment, and cleanup checks |
+| `npm run test:smoke` | Real Chromium DOM, images, cleanup, dynamic/virtual lists, postconditions and checkpoint restoration |
 | `npm run test:host` | Published Cordis/DSH Agent Loop + Chromium; real model-request inputs, baseline recovery, images, replay and isolation with deterministic decisions |
 | `npm run verify:package` | Confirms the npm package is a standalone DSH bundle with no Harness checkout |
 | `npm run verify:installed` | Installs the tarball in a temporary consumer project and imports the plugin |
@@ -532,6 +542,16 @@ npm run verify:installed
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and [SECURITY.md](SECURITY.md) for security boundaries and vulnerability reporting.
 
 ## 9.8 Update
+
+### Browser reliability fixes: exploration, action results and checkpoints
+
+| Problem | Current behavior | Result contract |
+|---|---|---|
+| Stale coverage after insertion or virtual-row replacement | Validate coverage against captured DOM content, container identity and dimensions; advance 80% of the actual viewport. | Coverage is revision-specific, not proof that every business item was read. Track item identities for completeness. |
+| Missing/occluded targets or truncated input looked successful | Return `error`, read back input values, and optionally check `expectText` / exact `expectUrl` for up to 5 seconds. | Inspect `metadata.verification`; successful dispatch without a postcondition is explicitly unverified. Task completion is a separate check. |
+| URL-only restoration and ambiguous same-URL snapshots | Use exact versioned IDs and memory-only checkpoints to restore supported fields and scrolling, then verify each item. | Missing/read-only/unsupported state yields `partial`; unavailable checkpoints yield `error`. |
+
+Examples: `browser_click({"elementIndex":12,"expectText":"Filter applied"})` and `browser_restore_state({"stateId":"tab0-dom3.2"})`. Checkpoints expire on tab closure, browser restart or cache eviction. See [reliability and verification](docs/reliability.md).
 
 ### Cross-page task memory: save facts before retiring DOM
 
@@ -543,9 +563,9 @@ The flow is: **observe a page → save relevant facts or mark it irrelevant → 
 
 The Host now provides a Session-scoped `browserRuntime`. Before each model call, the `agent/pre-step` hook keeps the latest DOM, required incremental baselines, and current screenshots while replacing stale page content. A missing baseline can be repaired from the complete snapshot captured with the same observation.
 
-`maxContextDeltas` defaults to 8 and creates periodic full-DOM checkpoints. Browser restarts invalidate old element references; this feature does not restore Chromium processes, login state, forms, or SPA memory, and it is not a general-purpose Agent memory system.
+`maxContextDeltas` defaults to 8 and creates periodic full-DOM checkpoints. Browser restarts invalidate old element references; context recovery does not restore Chromium processes, login state or SPA memory, and is not general-purpose Agent memory. Native form and scroll restoration is handled separately by `browser_restore_state`.
 
-9.8 verification: 34 tests, installed-package import with 17 tools, real Chromium smoke testing, and the real DSH Agent Loop cross-page memory scenario all passed. Model decisions used a deterministic test adapter, not an online LLM.
+9.8 verification: 38 tests, strict type checking, installed-package import with 17 tools, real Chromium baseline/reliability scenarios, and real DSH Agent Loop memory regression passed. Reliability checks cover 60 virtual rows, form/scroll checkpoints, partial restoration and action postconditions. Model decisions used a deterministic test adapter, not an online LLM.
 
 ## License
 

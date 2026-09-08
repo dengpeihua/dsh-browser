@@ -1,3 +1,4 @@
+import { capturePageCheckpoint } from "./page-state.js"
 import type { TabState, BrowserManager } from "./manager.js"
 import type { BrowserObservation } from "../browser-observation.js"
 import { browserObservationId } from "../browser-observation.js"
@@ -62,7 +63,7 @@ function toRanges(pages: number[]): string {
  */
 function buildScrollBar(data: ExplorationData): string {
   const total = data.explored.length + data.current.length + data.unexplored.length
-  const parts: string[] = [`${total} pages`]
+  const parts: string[] = [`${total} pages (coverage resets on content/layout changes)`]
   if (data.current.length > 0) parts.push(`viewing ${toRanges(data.current)}`)
   if (data.unexplored.length > 0) {
     const currentSet = new Set(data.current)
@@ -70,7 +71,7 @@ function buildScrollBar(data: ExplorationData): string {
     const jumpHint = !adjacentToView ? ` (use browser_scroll_to_page to jump directly)` : ""
     parts.push(`unexplored ${toRanges(data.unexplored)}${jumpHint}`)
   } else {
-    parts.push("fully explored — if target not found, try a different approach")
+    parts.push("captured viewport coverage complete for this DOM revision; item completeness is not verified")
   }
   return parts.join(" | ")
 }
@@ -124,7 +125,7 @@ export async function getPageDom(
     // The last round of renderDomTree will inject visual numbers into the page; it must be cleaned first, otherwise the snapshot will treat the tool's own overlay as a page DOM change.
     await domService.cleanupHighlightsBeforeSnapshot()
     const domId = domService.generateDomId()
-    const stateId = `${tabId}-${domId.split(".")[0]}`
+    const stateId = `${tabId}-${domId}`
     const previousDomId = activeTab.lastDomId
 
     // Extract and render DOM tree (settle wait happens inside buildTree)
@@ -135,7 +136,6 @@ export async function getPageDom(
     const capturedAt = new Date().toISOString()
     const observationId = browserObservationId({ runtimeId: manager.runtimeId, tabId, domId })
     const viewportStats = await domService.computeViewportStats(renderResult.scrollContainerMap)
-    const explorationBars = domService.getExplorationBars(domId)
     const tabList = manager.listTabs()
 
     // Cache the snapshot
@@ -151,6 +151,9 @@ export async function getPageDom(
       renderResult.hasOverlay,
       renderResult.topElementCount,
     )
+
+    domService.setPageCheckpoint(domId, await capturePageCheckpoint(activeTab.page))
+    const explorationBars = domService.getExplorationBars(domId)
 
     // Try diff when we have a previous snapshot on the same tab
     let diffMode: "full" | "incremental" | "nochange" = "full"

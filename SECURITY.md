@@ -149,3 +149,9 @@ Saved browser facts and raw observations can contain sensitive data in the DSH S
 - automated scanner findings without a reproducible impact path.
 
 Upstream issues may still be reported privately so maintainers can evaluate dependency upgrades or local mitigations.
+
+## 检查点恢复 / Checkpoint restoration
+
+恢复检查点仅缓存在当前 Session 的浏览器内存中，与 DOM 缓存一起淘汰，不写入事实日志或独立磁盘文件。密码和文件选择不采集；其他普通字段也可能含有敏感数据，因此必须按浏览器会话数据保护。恢复操作沿用 mutating 审批，可能触发页面 input/change 事件；不会自动提交表单。URL 跳转到不同地址时不会继续填写原检查点数据。字段缺失、只读、歧义选择器或不支持的状态会报告未恢复。
+
+Restoration checkpoints remain in the Session-local browser cache and are evicted with DOM snapshots; they are not written to fact logs or separate files. Passwords and file selections are excluded, but ordinary fields can still be sensitive. Restoration requires the existing mutating approval and may trigger page input/change handlers; it does not submit forms automatically. A redirected URL blocks field replay. Missing, read-only, ambiguous or unsupported state is reported rather than silently accepted. Normal DOM observations and screenshots remain subject to their existing data-retention rules.

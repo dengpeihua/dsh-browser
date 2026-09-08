@@ -68,7 +68,7 @@ export const browserRevealOffscreen: BrowserOperation = {
 
 export const browserScrollNextScreen: BrowserOperation = {
   id: "browser_scroll_next_screen",
-  description: "Advance to unseen content in a scroll container, one expanded screen at a time.",
+  description: "Advance by 80% of the actual viewport with overlap; inspect loaded content after each step.",
   async execute(args, context) {
     const move = direction(args.direction)
     const container = Number(args.container)
@@ -77,11 +77,10 @@ export const browserScrollNextScreen: BrowserOperation = {
     return context.manager.enqueue(async (isLast) => {
       const info = await domService.getScrollInfoByIndex(container)
       const beforePos = currentPage(info)
-      const expand = domService.getLatestExpand() ?? 1
       const horizontal = container > 0 && (domService.getScrollContainerNode(container)?.renderInfo?.isHorizontalScroll ?? false)
       const sign = move === "down" ? 1 : -1
-      const targetX = horizontal ? info.scrollX + sign * (0.9 + expand) * info.viewportWidth : info.scrollX
-      const targetY = horizontal ? info.scrollY : info.scrollY + sign * (0.9 + expand) * info.viewportHeight
+      const targetX = horizontal ? info.scrollX + sign * 0.8 * info.viewportWidth : info.scrollX
+      const targetY = horizontal ? info.scrollY : info.scrollY + sign * 0.8 * info.viewportHeight
       await domService.scrollToPositionByIndex(container, targetX, targetY)
       await waitForBrowserDelay(300, context.signal)
       const next = await domService.getScrollInfoByIndex(container)

@@ -11,12 +11,17 @@ export interface BrowserAttachment {
 }
 
 interface BrowserOperationResult {
+  status?: "success" | "error" | "partial"
   title: string
   output: string
   metadata: Record<string, unknown>
   attachments?: BrowserAttachment[]
   observation?: BrowserObservation
   imageState?: { runtimeId: string; domId: string; tabId: string }
+}
+
+export function operationError(title: string, errorCode: string, output: string): BrowserOperationResult {
+  return { status: "error", title, output, metadata: { errorCode, action: "failed", task: "not_evaluated" } }
 }
 
 interface BrowserOperationContext {

@@ -20,7 +20,7 @@ interface BrowserArtifact {
 }
 
 interface BrowserToolValue {
-  status: "success"
+  status: "success" | "error" | "partial"
   summary: string
   output: string
   next_actions: string[]
@@ -116,6 +116,14 @@ function renderValue(value: BrowserToolValue) {
 }
 
 function validateRuntimeArgs(toolId: BrowserToolId, args: unknown, config: ResolvedConfig): void {
+  if (toolId === "browser_click" || toolId === "browser_input") {
+    const input = args as Record<string, unknown>
+    for (const key of ["expectText", "expectUrl"]) {
+      if (input[key] !== undefined && (typeof input[key] !== "string" || !input[key].trim())) {
+        throw new Error(`${key} must be a non-empty string; no browser action was performed.`)
+      }
+    }
+  }
   if (toolId !== "browser_wait") return
   const seconds = Number((args as { seconds: unknown }).seconds)
   if (!Number.isFinite(seconds) || seconds < 0 || seconds > config.maxWaitSeconds) {
@@ -185,13 +193,17 @@ export function registerBrowserTools(ctx: CordisContext, config: ResolvedConfig)
           signal: exec.signal,
           outputLimiter,
         })
+        exec.signal.throwIfAborted()
         const { refs, artifacts } = await persistAttachments(ctx, result.attachments)
+        exec.signal.throwIfAborted()
         const imageState = result.imageState
         return {
-          status: "success",
+          status: result.status ?? "success",
           summary: result.title,
           output: result.output,
-          next_actions: nextActions(operation.id),
+          next_actions: result.status === "error" || result.status === "partial"
+            ? ["Inspect the failure or partial result and re-observe before retrying; do not report the task as completed."]
+            : nextActions(operation.id),
           artifacts,
           metadata: jsonValue(result.metadata),
           images: refs.map(jsonValue),

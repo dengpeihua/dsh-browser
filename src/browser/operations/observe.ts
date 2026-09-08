@@ -1,17 +1,17 @@
-import { throwIfBrowserAborted, type BrowserOperation } from "../runtime.js"
+import { operationError, throwIfBrowserAborted, type BrowserOperation } from "../runtime.js"
 
 export const browserViewElements: BrowserOperation = {
   id: "browser_view_elements",
   description: "Capture visual evidence for [view:ID] elements from the current DOM snapshot and attach the resulting images to DSH.",
   async execute(args, context) {
     const viewIds = Array.isArray(args.viewIds) ? args.viewIds.map(String) : []
-    if (viewIds.length === 0) return { title: "View elements", output: "No viewIds provided.", metadata: {} }
+    if (viewIds.length === 0) return operationError("View elements", "missing_view_ids", "No viewIds provided.")
     return context.manager.enqueue(async () => {
       const tab = context.manager.getActiveTab()
       const { domService } = tab
       const visualElementMap = domService.getLatestVisualElementMap()
       if (!visualElementMap || visualElementMap.size === 0) {
-        return { title: "View elements", output: "No visual elements available. Wait for the page and refresh the DOM snapshot.", metadata: {} }
+        return operationError("View elements", "visual_elements_unavailable", "No visual elements available. Wait for the page and refresh the DOM snapshot.")
       }
       return domService.withClient(async () => {
         const textParts: string[] = []
@@ -35,6 +35,7 @@ export const browserViewElements: BrowserOperation = {
           attachments.push({ mime: "image/jpeg", filename: `view-${id}.jpg`, dataUrl: `data:image/jpeg;base64,${base64}` })
         }
         return {
+          status: attachments.length === viewIds.length ? "success" : attachments.length > 0 ? "partial" : "error",
           title: `View ${viewIds.length} element(s)`, output: textParts.join("\n"), metadata: {}, attachments,
           ...(tab.lastDomId ? { imageState: { runtimeId: context.manager.runtimeId, domId: tab.lastDomId, tabId: tab.id } } : {}),
         }

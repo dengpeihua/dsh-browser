@@ -7,7 +7,7 @@ import { satisfies } from "semver"
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"))
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8")
 const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8")
-const expectedPackageDocumentation = ["AGENTS.md", "CONTRIBUTING.md", "LICENSE", "README.md", "SECURITY.md"]
+const expectedPackageDocumentation = ["AGENTS.md", "CONTRIBUTING.md", "LICENSE", "README.md", "SECURITY.md", "docs/reliability.md"]
 const expectedRepositoryDocumentation = expectedPackageDocumentation
 
 async function findDocumentation(directory, prefix = "") {
@@ -24,7 +24,7 @@ async function findDocumentation(directory, prefix = "") {
   return found
 }
 
-test("repository keeps agent guidance and the four standard documentation files", async () => {
+test("repository keeps standard documentation and the published reliability guide", async () => {
   const documentation = await findDocumentation(new URL("../", import.meta.url))
   assert.deepEqual(documentation.sort(), expectedRepositoryDocumentation)
 })

@@ -1,3 +1,5 @@
+import type { PageCheckpoint } from "../page-state.js"
+import { explorationFingerprint } from "./exploration.js"
 /**
  * DOM extraction, interaction, rendering, and snapshot-cache service.
  *
@@ -49,11 +51,15 @@ interface ScrollContainerPages {
   index: number;
   pagesAbove: number;
   pagesBelow: number;
+  viewportSize?: number;
+  contentSize?: number;
 }
 
 export type ViewportStats = ScrollContainerPages[];
 
 interface DomSnapshot {
+  pageCheckpoint?: PageCheckpoint;
+  explorationFingerprint: string;
   domTree: EnhancedDOMTreeNode;
   selectorMap: DOMSelectorMap;
   scrollContainerMap: ScrollContainerMap;
@@ -153,6 +159,15 @@ export class DomService {
    */
   async cleanupHighlightsBeforeSnapshot(): Promise<void> {
     await cleanupHighlights(this.client, this.oopifManager);
+  }
+
+  setPageCheckpoint(domId: string, checkpoint: PageCheckpoint): void {
+    const snapshot = this.cache.get(domId);
+    if (snapshot) snapshot.pageCheckpoint = checkpoint;
+  }
+
+  getPageCheckpoint(domId: string): PageCheckpoint | undefined {
+    return this.cache.get(domId)?.pageCheckpoint;
   }
 
   getCachedUrl(domId: string): string | undefined {
@@ -890,6 +905,26 @@ export class DomService {
     );
   }
 
+  async getElementState(node: EnhancedDOMTreeNode): Promise<{ connected: boolean; disabled: boolean; readOnly: boolean; value: string }> {
+    if (node.oopifSessionId) await this.ensureOOPIF();
+    const send = node.oopifSessionId
+      ? <T>(method: string, params?: Record<string, unknown>) => this.oopifManager.sendCommand<T>(node.oopifSessionId!, method, params)
+      : <T>(method: string, params?: Record<string, unknown>) => this.client.sendCommand<T>(method, params);
+    const resolved = await send<{ object?: { objectId?: string } }>('DOM.resolveNode', { backendNodeId: node.backendNodeId });
+    const objectId = resolved.object?.objectId;
+    if (!objectId) throw new Error('Element reference is stale; re-observe the page.');
+    try {
+      const result = await send<{ result?: { value?: { connected: boolean; disabled: boolean; readOnly: boolean; value: string } }; exceptionDetails?: unknown }>('Runtime.callFunctionOn', {
+        objectId, returnByValue: true,
+        functionDeclaration: `function() { return { connected: this.isConnected, disabled: this.matches(':disabled') || this.getAttribute('aria-disabled') === 'true', readOnly: !!this.readOnly, value: String(this.value ?? this.getAttribute('aria-valuenow') ?? this.textContent ?? '') } }`,
+      });
+      if (result.exceptionDetails || !result.result?.value) throw new Error('Unable to verify live element state.');
+      return result.result.value;
+    } finally {
+      await send('Runtime.releaseObject', { objectId }).catch(() => {});
+    }
+  }
+
   /**
    * All complex operations that require CDP are entered through here: confirm that the main session is available, then find OOPIF and then execute it in the same client context.
    * The caller should not cache the internal session; navigation or cross-domain iframe will refresh the router when rebuilt.
@@ -934,6 +969,7 @@ export class DomService {
     topElementCount?: number,
   ): void {
     this.setSnapshot(domId, {
+      explorationFingerprint: explorationFingerprint(domTree),
       domTree,
       selectorMap,
       scrollContainerMap,
@@ -1043,17 +1079,20 @@ export class DomService {
       let curInterval: [number, number] | null = null;
 
       for (const [id, snapshot] of this.cache) {
-        if (snapshot.domTree.backendNodeId !== rootId) continue;
+        if (snapshot.domTree.backendNodeId !== rootId || snapshot.url !== target.url) continue;
+        if (snapshot.explorationFingerprint !== target.explorationFingerprint) continue;
         if (!snapshot.viewportStats) continue;
-
-        const sc = snapshot.viewportStats.find(s => s.index === cIdx);
+        const targetNode = target.scrollContainerMap.get(cIdx);
+        const oldIndex = cIdx === 0 ? 0 : [...snapshot.scrollContainerMap].find(([, node]) =>
+          node.backendNodeId === targetNode?.backendNodeId && node.frameId === targetNode?.frameId)?.[0];
+        const sc = snapshot.viewportStats.find(s => s.index === oldIndex);
+        const targetStats = target.viewportStats.find(s => s.index === cIdx);
+        if (sc?.viewportSize !== targetStats?.viewportSize || sc?.contentSize !== targetStats?.contentSize) continue;
         if (!sc) continue;
 
-        const exp = cIdx === 0 ? (snapshot.expand ?? 0) : 0;
-        const expandAbove = Math.min(exp, sc.pagesAbove);
-        const expandBelow = Math.min(exp, sc.pagesBelow);
-        const start = sc.pagesAbove - expandAbove;
-        const end = sc.pagesAbove + 1 + expandBelow;
+        // Expanded DOM can contain unloaded virtual rows; only count the actual viewport.
+        const start = sc.pagesAbove;
+        const end = sc.pagesAbove + 1;
         intervals.push([start, end]);
         if (id === domId) curInterval = [start, end];
       }
@@ -1077,9 +1116,10 @@ export class DomService {
       const current: number[] = [];
       const unexplored: number[] = [];
       for (let p = 0; p < totalPages; p++) {
-        const isCurrent =
-          curInterval && curInterval[0] <= p && curInterval[1] >= p + 1;
-        const isExplored = merged.some(([s, e]) => s <= p && e >= p + 1);
+        const last = target.viewportStats.find(s => s.index === cIdx)!;
+        const end = Math.min(p + 1, last.pagesAbove + 1 + last.pagesBelow);
+        const isCurrent = curInterval && curInterval[0] <= p + 1e-6 && curInterval[1] >= end - 1e-6;
+        const isExplored = merged.some(([s, e]) => s <= p + 1e-6 && e >= end - 1e-6);
         if (isCurrent) {
           current.push(p);
         } else if (isExplored) {
@@ -1203,13 +1243,15 @@ export class DomService {
     const pixelsBelow = Math.max(0, pageHeight - viewportHeight - scrollY);
     scrollContainers.push({
       index: 0,
+      viewportSize: viewportHeight,
+      contentSize: pageHeight,
       pagesAbove:
         viewportHeight > 0
-          ? Math.round((pixelsAbove / viewportHeight) * 10) / 10
+          ? pixelsAbove / viewportHeight
           : 0,
       pagesBelow:
         viewportHeight > 0
-          ? Math.round((pixelsBelow / viewportHeight) * 10) / 10
+          ? pixelsBelow / viewportHeight
           : 0,
     });
 
@@ -1218,15 +1260,19 @@ export class DomService {
       const sr = node.snapshotNode?.scrollRects;
       const cr = node.snapshotNode?.clientRects;
       if (!sr || !cr || cr.height <= 0) continue;
-      const scrollTop = sr.y;
-      const scrollableHeight = sr.height;
-      const visibleHeight = cr.height;
+      const horizontal = node.renderInfo.isHorizontalScroll;
+      const scrollTop = horizontal ? sr.x : sr.y;
+      const scrollableHeight = horizontal ? sr.width : sr.height;
+      const visibleHeight = horizontal ? cr.width : cr.height;
+      if (visibleHeight <= 0) continue;
       const above = scrollTop;
       const below = Math.max(0, scrollableHeight - visibleHeight - scrollTop);
       scrollContainers.push({
         index,
-        pagesAbove: Math.round((above / visibleHeight) * 10) / 10,
-        pagesBelow: Math.round((below / visibleHeight) * 10) / 10,
+        viewportSize: visibleHeight,
+        contentSize: scrollableHeight,
+        pagesAbove: above / visibleHeight,
+        pagesBelow: below / visibleHeight,
       });
     }
 

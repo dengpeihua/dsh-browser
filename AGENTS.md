@@ -11,7 +11,7 @@ Tests use Node's built-in runner in `test/*.test.mjs`. Real-browser and installa
 - `npm install` installs development dependencies. Node.js 22.19 or newer is required.
 - `npm run build` compiles `src/index.ts` into the ESM package under `lib/`.
 - `npm test` builds and runs all `node:test` suites.
-- `npm run test:smoke` launches Chromium and exercises the primary browser flow.
+- `npm run test:smoke` launches Chromium and exercises the primary flow plus dynamic/virtual lists, action postconditions, and checkpoint restoration.
 - `npm run verify:package` checks bundle metadata, dependencies, and published files.
 - `npm run verify:installed` installs the package in a temporary consumer and verifies its exports.
 - `npm run check` runs unit/package tests plus installed-package verification.
@@ -26,7 +26,9 @@ Name tests `*.test.mjs` and describe observable behavior. Add registration/schem
 
 ## Commit & Pull Request Guidelines
 
-This snapshot has no Git history to inspect. Follow the documented Conventional Commit style, such as `feat: add history navigation`, `fix(dom): preserve selector mapping`, or `docs: clarify installation`. Keep pull requests focused; explain motivation and user-visible effects, link relevant issues, list exact verification commands and results, and include reproducible steps or screenshots for interaction changes.
+Inspect the current Git history and follow Conventional Commit style, such as `feat: add history navigation`, `fix(dom): preserve selector mapping`, or `docs: clarify installation`. Keep pull requests focused; explain motivation and user-visible effects, link relevant issues, list exact verification commands and results, and include reproducible steps or screenshots for interaction changes.
+
+Keep tool execution, checked postconditions, and task completion distinct. Expected action failures must return `error`, incomplete checkpoint restores must return `partial`, and tests must cover both. DOM coverage is revision-specific and must not claim that every data item was read. Checkpoints are memory-only and must not persist passwords, file selections, or browser credentials.
 
 ## Security & Configuration
 

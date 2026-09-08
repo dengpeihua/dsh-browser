@@ -32,7 +32,7 @@ export const PARAMETER_SCHEMAS: Record<BrowserToolId, ParameterSchemaSpec> = {
   },
   browser_refresh: {},
   browser_restore_state: {
-    stateId: { type: "string", required: true, description: "Snapshot state ID such as tab0-dom3." },
+    stateId: { type: "string", required: true, description: "Exact checkpoint state ID, including its subversion when present, such as tab0-dom3.2." },
   },
   browser_new_tab: {
     url: { type: "string", description: "Optional URL to open in the new tab." },
@@ -45,12 +45,16 @@ export const PARAMETER_SCHEMAS: Record<BrowserToolId, ParameterSchemaSpec> = {
   },
   browser_click: {
     elementIndex: { type: "integer", required: true, description: "Numeric [N] or <N> element marker from the current DOM snapshot." },
+    expectText: { type: "string", description: "Optional visible text required after the click; checked for up to 5 seconds." },
+    expectUrl: { type: "string", description: "Optional exact final URL required after the click; checked for up to 5 seconds." },
   },
   browser_input: {
     elementIndex: { type: "integer", required: true, description: "Numeric <N> input marker from the current DOM snapshot." },
     text: { type: "string", required: true, description: "Text or value to enter." },
     clear: { type: "boolean", description: "Clear the existing value first; defaults to true." },
     pressEnter: { type: "boolean", description: "Press Enter after input; defaults to false." },
+    expectText: { type: "string", description: "Optional visible text required after input; checked for up to 5 seconds." },
+    expectUrl: { type: "string", description: "Optional exact final URL required after input; checked for up to 5 seconds." },
   },
   browser_reveal_offscreen: {
     direction: { type: "string", required: true, enum: ["up", "down"], description: "Direction of the OFF-SCREEN block." },
@@ -101,7 +105,7 @@ export const TOOL_OUTPUT_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    status: { type: "string", required: true, const: "success" },
+    status: { type: "string", required: true, enum: ["success", "error", "partial"] },
     summary: { type: "string", required: true },
     output: { type: "string", required: true },
     next_actions: { type: "array", required: true, items: { type: "string" } },

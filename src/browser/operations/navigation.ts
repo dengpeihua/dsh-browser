@@ -1,5 +1,6 @@
+import { restorePageCheckpoint } from "../page-state.js"
 import { getPageDom, skippedDomOutput } from "../dom-utils.js"
-import { navigatePage, reloadPage, type BrowserOperation } from "../runtime.js"
+import { operationError, navigatePage, reloadPage, type BrowserOperation } from "../runtime.js"
 
 export const browserGoto: BrowserOperation = {
   id: "browser_goto",
@@ -40,37 +41,41 @@ export const browserRefresh: BrowserOperation = {
 
 export const browserRestoreState: BrowserOperation = {
   id: "browser_restore_state",
-  description: "Revisit the cached URL for a DOM stateId. Form values, scroll position, modal state, and SPA memory are not restored.",
+  description: "Restore a cached checkpoint URL, supported native form values, selections, details and scroll positions; report incomplete restoration explicitly.",
   async execute(args, context) {
     const stateId = String(args.stateId)
-    const match = stateId.match(/^(tab\d+)-(dom\d+)$/)
+    const match = stateId.match(/^(tab\d+)-(dom\d+(?:\.\d+)?)$/)
     if (!match) {
-      return { title: "Restore state", output: `Invalid stateId format: "${stateId}". Expected "tabN-domN".`, metadata: {} }
+      return operationError("Restore state", "invalid_state_id", `Invalid stateId format: "${stateId}". Expected "tabN-domN" or "tabN-domN.M".`)
     }
     const tabId = match[1]
     const domId = match[2]
     if (!tabId || !domId) throw new Error(`Unable to parse stateId ${stateId}`)
     const tab = context.manager.getTab(tabId)
     if (!tab) {
-      return { title: "Restore state", output: `Tab "${tabId}" not found. It may have been closed.`, metadata: {} }
+      return operationError("Restore state", "tab_not_found", `Tab "${tabId}" not found. It may have been closed.`)
     }
     return context.manager.enqueue(async (isLast) => {
       await context.manager.switchTab(tabId)
       const snapshotUrl = tab.domService.getCachedUrl(domId)
-      if (!snapshotUrl) {
+      const checkpoint = tab.domService.getPageCheckpoint(domId)
+      if (!snapshotUrl || !checkpoint) {
         return {
-          title: `Revisit ${stateId}`,
-          output: `State ${stateId} no longer has a cached URL; no navigation was performed.`,
-          metadata: {},
+          status: "error",
+          title: `Restore ${stateId}`,
+          output: `State ${stateId} no longer has a cached checkpoint; no navigation was performed.`,
+          metadata: { errorCode: "checkpoint_unavailable" },
         }
       }
       const finalUrl = await navigatePage(tab, snapshotUrl, context.signal)
+      const restoration = await restorePageCheckpoint(tab.page, checkpoint, context.signal)
       const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
       return {
-        title: `Revisit ${stateId}`,
-        output: `Revisited ${finalUrl} from ${stateId}. Only the URL was restored; transient page state was not.${dom.output}`,
+        status: restoration.verified ? "success" : "partial",
+        title: `Restore ${stateId}`,
+        output: `Restored checkpoint ${stateId} at ${finalUrl}: ${restoration.restored} checks passed, ${restoration.failed} failed, ${restoration.omitted} unsupported or excluded items. ${restoration.verified ? "Captured fields and scroll positions verified." : "Restoration incomplete; inspect the current page."} Arbitrary SPA memory and login state are not restored.${dom.output}`,
         observation: dom.observation,
-        metadata: { url: finalUrl, domId: dom.domId },
+        metadata: { url: finalUrl, domId: dom.domId, restoration },
       }
     }, context.signal)
   },

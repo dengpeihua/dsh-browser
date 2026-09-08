@@ -1,8 +1,9 @@
+import { verifyPostconditions } from "../verification.js"
 import { getPageDom, skippedDomOutput } from "../dom-utils.js"
 import { VALUE_SETTABLE_INPUT_TYPES } from "../dom/tree/clickable-detector.js"
 import type { EnhancedDOMTreeNode } from "../dom/types/dom-node.js"
 import type { TabState } from "../manager.js"
-import { waitForBrowserDelay, type BrowserOperation } from "../runtime.js"
+import { operationError, waitForBrowserDelay, type BrowserOperation } from "../runtime.js"
 
 function findSelectAncestor(node: EnhancedDOMTreeNode): EnhancedDOMTreeNode | undefined {
   let current = node.parentNode
@@ -66,30 +67,38 @@ export const browserClick: BrowserOperation = {
     return context.manager.enqueue(async (isLast) => {
       const elementData = await getElementDataByIndex(tab, elementIndex, context.signal)
       if (!elementData) {
-        return { title: `Click [${elementIndex}]`, output: `Element [${elementIndex}] not found or not clickable in the current DOM.`, metadata: {} }
+        return operationError(`Click [${elementIndex}]`, "element_not_found", `Element [${elementIndex}] not found or not clickable in the current DOM.`)
       }
       return tab.domService.withClient(async () => {
+        const live = await tab.domService.getElementState(elementData.node)
+        if (!live.connected || live.disabled) return operationError(`Click [${elementIndex}]`, "element_unavailable", "Element is detached or disabled; refresh the page state before retrying.")
         if (elementData.isSelectOption) {
           await tab.domService.selectOption(elementData.node)
           tab.domService.recordInteraction(elementData.node.backendNodeId, "select", elementData.renderedLine)
           await waitForBrowserDelay(200, context.signal)
+          const verification = await verifyPostconditions(tab.page, args, context.signal)
+          const outcome = verification.requested && !verification.verified ? "error" : "success"
+          const note = verification.requested ? (verification.verified ? " Postcondition verified." : " Postcondition failed.") : " Action dispatched; outcome not verified. Check the returned page before claiming success."
           const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
           const label = elementData.renderedLine?.trim() ?? `option [${elementIndex}]`
-          return { title: `Select ${label}`, output: `Selected ${label}${dom.output}`, observation: dom.observation, metadata: {} }
+          return { title: `Select ${label}`, status: outcome, output: `Selected ${label}${note}${dom.output}`, observation: dom.observation, metadata: { verification, task: "not_evaluated" } }
         }
 
         const isHit = await tab.domService.hitTestAtPoint(elementData.node)
         if (!isHit) {
-          return { title: `Click [${elementIndex}]`, output: `Element [${elementIndex}] is occluded by another element. Try closing overlays or scrolling.`, metadata: {} }
+          return operationError(`Click [${elementIndex}]`, "element_occluded", `Element [${elementIndex}] is occluded by another element. Try closing overlays or scrolling.`)
         }
         const cssX = elementData.rect.x + elementData.rect.width / 2
         const cssY = elementData.rect.y + elementData.rect.height / 2
         await tab.domService.click(cssX, cssY)
         tab.domService.recordInteraction(elementData.node.backendNodeId, "click", elementData.renderedLine)
         await waitForBrowserDelay(500, context.signal)
+        const verification = await verifyPostconditions(tab.page, args, context.signal)
+        const outcome = verification.requested && !verification.verified ? "error" : "success"
+        const note = verification.requested ? (verification.verified ? " Postcondition verified." : " Postcondition failed.") : " Action dispatched; outcome not verified. Check the returned page before claiming success."
         const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
         const label = elementData.renderedLine?.trim() ?? `element [${elementIndex}]`
-        return { title: `Click ${label}`, output: `Clicked ${label}${dom.output}`, observation: dom.observation, metadata: {} }
+        return { title: `Click ${label}`, status: outcome, output: `Clicked ${label}${note}${dom.output}`, observation: dom.observation, metadata: { verification, task: "not_evaluated" } }
       })
     }, context.signal)
   },
@@ -107,18 +116,20 @@ export const browserInput: BrowserOperation = {
     return context.manager.enqueue(async (isLast) => {
       const elementData = await getElementDataByIndex(tab, elementIndex, context.signal)
       if (!elementData) {
-        return { title: `Input [${elementIndex}]`, output: `Element [${elementIndex}] not found in the current DOM.`, metadata: {} }
+        return operationError(`Input [${elementIndex}]`, "element_not_found", `Element [${elementIndex}] not found in the current DOM.`)
       }
       if (!elementData.isFill) {
-        return { title: `Input [${elementIndex}]`, output: `Element [${elementIndex}] is not an input element. Use browser_click instead.`, metadata: {} }
+        return operationError(`Input [${elementIndex}]`, "not_input", `Element [${elementIndex}] is not an input element. Use browser_click instead.`)
       }
       return tab.domService.withClient(async () => {
+        const before = await tab.domService.getElementState(elementData.node)
+        if (!before.connected || before.disabled || before.readOnly) return operationError(`Input [${elementIndex}]`, "element_unavailable", "Element is detached, disabled or read-only; input was not performed.")
         if (isValueSettableElement(elementData.node)) {
           await tab.domService.setInputValue(elementData.node, text)
         } else {
           const isHit = await tab.domService.hitTestAtPoint(elementData.node)
           if (!isHit) {
-            return { title: `Input [${elementIndex}]`, output: `Element [${elementIndex}] is occluded. Try closing overlays or scrolling.`, metadata: {} }
+            return operationError(`Input [${elementIndex}]`, "element_occluded", `Element [${elementIndex}] is occluded. Try closing overlays or scrolling.`)
           }
           const cssX = elementData.rect.x + elementData.rect.width / 2
           const cssY = elementData.rect.y + elementData.rect.height / 2
@@ -133,15 +144,26 @@ export const browserInput: BrowserOperation = {
           await tab.page.keyboard.type(text)
         }
         tab.domService.recordInteraction(elementData.node.backendNodeId, "input", elementData.renderedLine)
+        const expectedValue = clear || isValueSettableElement(elementData.node) ? text : before.value + text
+        const afterInput = await tab.domService.getElementState(elementData.node)
+        const inputValueVerified = afterInput.connected && afterInput.value === expectedValue
+        if (!inputValueVerified) {
+          const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
+          return { status: "error", title: `Input [${elementIndex}]`, output: `Input value did not match the requested value; Enter was not pressed.${dom.output}`, observation: dom.observation, metadata: { errorCode: "input_value_mismatch", task: "not_evaluated" } }
+        }
         if (pressEnter) await tab.domService.pressEnter()
         await waitForBrowserDelay(300, context.signal)
+        const verification = await verifyPostconditions(tab.page, args, context.signal)
+        const outcome = verification.requested && !verification.verified ? "error" : "success"
+        const note = verification.requested ? (verification.verified ? " Postcondition verified." : " Postcondition failed.") : " Action dispatched; outcome not verified. Check the returned page before claiming success."
         const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
         const label = elementData.renderedLine?.trim() ?? `element <${elementIndex}>`
         return {
           title: `Input "${text}" into [${elementIndex}]`,
-          output: `Input "${text}" into ${label}${pressEnter ? " and pressed Enter" : ""}${dom.output}`,
+          status: outcome,
+          output: `Input "${text}" into ${label}${pressEnter ? " and pressed Enter" : ""}${note}${dom.output}`,
           observation: dom.observation,
-          metadata: {},
+          metadata: { verification, inputValueVerified, task: "not_evaluated" },
         }
       })
     }, context.signal)

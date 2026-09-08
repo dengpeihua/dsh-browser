@@ -44,6 +44,19 @@ export function buildScrollContainerMap(
     }
   }
 
+  // Virtual lists may render only visible rows: there need not be an off-screen
+  // child to trigger registration. Keep the scrollable container itself usable.
+  for (const [id, node] of containerById) {
+    const sr = node.snapshotNode?.scrollRects
+    const cr = node.snapshotNode?.clientRects
+    if (!node.renderInfo.isVisible || !sr || !cr || cr.width <= 0 || cr.height <= 0) continue
+    if (sr.height <= cr.height + 1 && sr.width <= cr.width + 1) continue
+    const index = nextIndex++
+    containerToIndex.set(id, index)
+    scrollContainerMap.set(index, node)
+    node.renderInfo.isHorizontalScroll = sr.height <= cr.height + 1 && sr.width > cr.width + 1
+  }
+
   const visit = (node: EnhancedDOMTreeNode): void => {
     const containerId = node.renderInfo?.scrollableContainerId;
     if (

@@ -3,6 +3,70 @@ import test from "node:test"
 import { apply, TOOL_IDS } from "../lib/index.js"
 import { Session, SessionId } from "@deepseek-ai/dsh-session"
 
+test("missing click targets return an error result instead of success", async () => {
+  const { context, registered } = harnessContext()
+  const dispose = apply(context, { approvalMode: "off", headless: true })
+  try {
+    const exec = execution("browser_click")
+    const manager = context.browserRuntime.getManager(String(exec.agent.session.id))
+    manager.getActiveTab = () => ({ domService: { getLatestSelectorMap: () => new Map() } })
+    manager.enqueue = async fn => fn(() => true)
+    const tool = registered.find(t => t.name === "browser_click")
+    const result = await tool.execute({ elementIndex: 999 }, exec)
+    assert.equal(result.status, "error")
+    assert.equal(result.metadata.errorCode, "element_not_found")
+    assert.match(tool.output.render({}, result).map(x => x.text ?? "").join(""), /not found/)
+  } finally { await dispose() }
+})
+
+test("empty postconditions fail before browser creation or approval", async () => {
+  const { context, registered } = harnessContext()
+  const dispose = apply(context, { approvalMode: "mutating", headless: true })
+  try {
+    context.browserRuntime.getManager = () => { throw new Error("Unexpected browser creation") }
+    for (const name of ["browser_click", "browser_input"]) {
+      const tool = registered.find(t => t.name === name)
+      await assert.rejects(tool.execute({ elementIndex: 1, expectText: " ", ...(name === "browser_input" ? { text: "x" } : {}) }, execution(name)), /expectText must be a non-empty/)
+    }
+  } finally { await dispose() }
+})
+
+test("invalid restore checkpoints and missing images never report success", async () => {
+  const { context, registered } = harnessContext()
+  const dispose = apply(context, { approvalMode: "off", headless: true })
+  try {
+    for (const stateId of ["not-a-state", "tab999-dom0.2"]) {
+      const result = await registered.find(t => t.name === "browser_restore_state").execute({ stateId }, execution("browser_restore_state"))
+      assert.equal(result.status, "error")
+    }
+    const result = await registered.find(t => t.name === "browser_view_elements").execute({ viewIds: [] }, execution("browser_view_elements"))
+    assert.equal(result.status, "error")
+  } finally { await dispose() }
+})
+
+test("cancellation during postcondition reads cannot become a successful click", async () => {
+  const { context, registered } = harnessContext()
+  const dispose = apply(context, { approvalMode: "off", headless: true })
+  const controller = new AbortController()
+  try {
+    const exec = execution("browser_click", controller.signal)
+    const manager = context.browserRuntime.getManager(String(exec.agent.session.id))
+    const node = { backendNodeId: 1, renderInfo: {}, attributes: {} }
+    manager.getActiveTab = () => ({
+      page: { async evaluate() { controller.abort(new Error("stop verification")); return "done" } },
+      domService: {
+        getLatestSelectorMap: () => new Map([[1, node]]), withClient: async fn => fn(),
+        getElementRect: async () => ({ x: 0, y: 0, width: 20, height: 20 }),
+        getScrollInfoByIndex: async () => ({ viewportHeight: 900, viewportWidth: 1280 }),
+        getElementState: async () => ({ connected: true, disabled: false }),
+        hitTestAtPoint: async () => true, click: async () => {}, recordInteraction() {},
+      },
+    })
+    manager.enqueue = async fn => fn(() => true)
+    await assert.rejects(registered.find(t => t.name === "browser_click").execute({ elementIndex: 1, expectText: "done" }, exec), /stop verification/)
+  } finally { await dispose() }
+})
+
 function harnessContext(services = {}) {
   const registered = []
   const promptSections = []

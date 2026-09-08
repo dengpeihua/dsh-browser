@@ -124,3 +124,9 @@ Common commands:
 | `npm run verify:package` | Check the bundle manifest, dependencies, and publish list |
 | `npm run verify:installed` | Install and import the tarball in a temporary consumer |
 | `npm run check` | Run tests and installation verification |
+
+## 浏览可靠性回归 / Browser reliability regressions
+
+修改交互、滚动或恢复时，运行 `npm run check`、`npx tsc --noEmit`、`npm run test:smoke` 和 `npm run test:host`。`scripts/smoke-reliability.mjs` 使用本地 HTTP 页面和真实 Chromium，覆盖动态插入、60 条虚拟列表、输入值核对、成功/失败后置条件、遮挡、精确版本的表单与滚动恢复，以及只读字段的部分恢复。新增能力应同时覆盖正常和失败路径。
+
+For interaction, scrolling or restoration changes, run the same commands above. Keep expected action failures, optional postcondition checks and task completion separate; verify partial restoration rather than treating a returned function as success. Use local fixtures and never commit real page data or checkpoint values.
