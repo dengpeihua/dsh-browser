@@ -28,6 +28,7 @@ export const browserRevealOffscreen: BrowserOperation = {
           return {
             title: `Scroll to "${target}" in [container:${container}]`,
             output: `Scrolled to element in container [${container}]: ${target}${dom.output}`,
+            observation: dom.observation,
             metadata: {},
           }
         }
@@ -58,6 +59,7 @@ export const browserRevealOffscreen: BrowserOperation = {
       return {
         title: `Scroll ${move} [container:${container}]`,
         output: `Scrolled ${move} on container [${container}]: P${beforePos} -> P${afterPos}${boundary}${targetHint}${dom.output}`,
+        observation: dom.observation,
         metadata: {},
       }
     }, context.signal)
@@ -95,6 +97,7 @@ export const browserScrollNextScreen: BrowserOperation = {
       return {
         title: `Scroll ${move} next screen [container:${container}]`,
         output: `Scrolled ${move} to next screen on container [${container}]: P${beforePos} -> P${afterPos}${boundary}${dom.output}`,
+        observation: dom.observation,
         metadata: {},
       }
     }, context.signal)
@@ -130,6 +133,7 @@ export const browserScrollToPage: BrowserOperation = {
       return {
         title: `Scroll to P${page} [container:${container}]`,
         output: `Scrolled to target page on container [${container}]: P${beforePos} -> P${afterPos}${boundary}${dom.output}`,
+        observation: dom.observation,
         metadata: {},
       }
     }, context.signal)

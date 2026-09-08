@@ -13,3 +13,4 @@
         maxWaitSeconds: 300
         scriptMaxLines: 100
         scriptMaxBytes: 8192
+        maxContextDeltas: 8

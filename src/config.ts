@@ -15,6 +15,7 @@ export interface Config {
   scriptMaxLines?: number
   scriptMaxBytes?: number
   outputDir?: string
+  maxContextDeltas?: number
 }
 
 /** Cordis configuration schema exported for DSH config validation and defaults. */
@@ -30,6 +31,7 @@ export const Config: z<Config> = z.object({
   scriptMaxLines: z.number().default(100),
   scriptMaxBytes: z.number().default(8 * 1024),
   outputDir: z.string(),
+  maxContextDeltas: z.number().default(8),
 })
 
 export interface ResolvedConfig {
@@ -44,6 +46,7 @@ export interface ResolvedConfig {
   scriptMaxLines: number
   scriptMaxBytes: number
   outputDir?: string
+  maxContextDeltas: number
 }
 
 function positiveInteger(name: string, value: number): number {
@@ -68,6 +71,7 @@ export function resolveConfig(config: Config = {}): ResolvedConfig {
     maxWaitSeconds: positiveInteger("maxWaitSeconds", config.maxWaitSeconds ?? 300),
     scriptMaxLines: positiveInteger("scriptMaxLines", config.scriptMaxLines ?? 100),
     scriptMaxBytes: positiveInteger("scriptMaxBytes", config.scriptMaxBytes ?? 8 * 1024),
+    maxContextDeltas: positiveInteger("maxContextDeltas", config.maxContextDeltas ?? 8),
     ...(outputDir ? { outputDir } : {}),
   }
 }

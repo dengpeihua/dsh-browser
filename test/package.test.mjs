@@ -49,24 +49,26 @@ test("package dependencies never point at a local Harness checkout", () => {
   }
 })
 
-test("DSH peer ranges include the published and locked prerelease hosts", () => {
+test("DSH peers require the verified host surface-replacement contract", () => {
   const dshPeers = [
     "@deepseek-ai/dsh-attachment",
     "@deepseek-ai/dsh-session",
     "@deepseek-ai/dsh-system-prompt",
     "@deepseek-ai/dsh-tools",
     "@deepseek-ai/dsh-user-approval",
+    "@deepseek-ai/dsh-agent",
+    "@deepseek-ai/dsh-llm",
   ]
   for (const name of dshPeers) {
     const range = packageJson.peerDependencies[name]
-    assert.equal(satisfies("0.1.1-rc.2", range), true, `${name} must support the published host`)
+    assert.equal(satisfies("0.1.1-rc.2", range), false, `${name} must not advertise an unverified old host`)
     assert.equal(satisfies("0.1.2-alpha.2", range), true, `${name} must support the locked host`)
   }
 })
 
 test("installation docs use the published DSH launcher instead of a Harness checkout", () => {
-  assert.match(readme, /npx @deepseek-ai\/dsh plugin --profile web add/)
-  assert.match(readme, /npx @deepseek-ai\/dsh web/)
+  assert.match(readme, /npx @deepseek-ai\/dsh@0\.1\.2-alpha\.2 plugin --profile web add/)
+  assert.match(readme, /npx @deepseek-ai\/dsh@0\.1\.2-alpha\.2 web/)
   assert.match(readme, /尚未发布到 npm/)
   assert.match(readme, /npm install --global pnpm/)
   assert.doesNotMatch(readme, /(?:Set-Location|cd)\s+[^\r\n]*deepseek-harness/i)

@@ -60,8 +60,9 @@ try {
   assert.equal(manifest.dsh.bundle.patch, "./cordis.patch.yml")
   assert.match(bundlePatch, /name:\s*dsh-browser-plugin/)
   assert.equal(plugin.name, "dsh-browser")
-  assert.equal(plugin.TOOL_IDS.length, 15)
-  console.log("verify-installed-package: tarball installed and imported successfully (15 tools).")
+  assert.equal(plugin.TOOL_IDS.length, 17)
+  assert.equal(typeof plugin.recordBrowserFacts, "function")
+  console.log("verify-installed-package: tarball installed and imported successfully (17 tools).")
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true })
 }

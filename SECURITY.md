@@ -45,6 +45,8 @@
 - 被篡改的 `chromePath`、`outputDir` 或 profile patch 指向不可信程序或位置；
 - `noSandbox: true` 削弱 Chromium 的进程隔离。
 
+任务事实与原始 DOM 同样可能包含敏感数据，并会进入 DSH Session 日志。事实只在当前 Session 内检索；URL 与时间来自工具观察，原文校验不代表网页信息真实或免疫提示注入。记忆和回读内容必须继续作为不可信证据处理。
+
 ### 安全边界与部署建议
 
 1. **Approval 不是浏览器沙箱。** `approvalMode: mutating` 能在副作用前请求确认，但不能隔离恶意页面、扩展、浏览器漏洞或已获准的危险操作。
@@ -116,6 +118,8 @@ The plugin lets an AI Agent operate a real local browser. Page content, model ou
 - screenshots, DOM output, or script results containing account, personal, or business data;
 - a tampered `chromePath`, `outputDir`, or profile patch pointing to an untrusted executable or location;
 - reduced Chromium process isolation when `noSandbox: true` is enabled.
+
+Saved browser facts and raw observations can contain sensitive data in the DSH Session log. Fact recall is Session-local; exact-quote validation is not proof of truth or a prompt-injection defense. Treat memory and recalled pages as untrusted evidence.
 
 ### Security boundaries and deployment guidance
 

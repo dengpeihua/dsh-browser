@@ -19,6 +19,7 @@ export const browserExecuteScript: BrowserOperation = {
     return {
       title: "Execute script",
       output: `${limited.content}${dom.output}`,
+      observation: dom.observation,
       metadata: limited.truncated ? { scriptResultPath: limited.outputPath } : {},
     }
   },

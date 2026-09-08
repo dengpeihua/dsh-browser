@@ -1,5 +1,6 @@
 import assert from "node:assert/strict"
 import { apply } from "../lib/index.js"
+import { Session, SessionId } from "@deepseek-ai/dsh-session"
 
 const registered = []
 let savedImages = 0
@@ -17,6 +18,10 @@ const attachments = {
   },
 }
 const context = {
+  provide(name, value) {
+    context[name] = value
+    return () => { delete context[name] }
+  },
   tools: {
     register(tool) {
       registered.push(tool)
@@ -51,6 +56,7 @@ const dispose = apply(context, {
 })
 
 let sequence = 0
+const session = Session.create(SessionId("smoke-session"))
 function execution(name) {
   const callId = `smoke-${++sequence}`
   return {
@@ -58,7 +64,7 @@ function execution(name) {
     rootCallId: callId,
     name,
     arguments: {},
-    agent: { id: "smoke-session" },
+    agent: { id: "smoke-session", session },
     signal: new AbortController().signal,
     token: Symbol(callId),
     deferContext() {},

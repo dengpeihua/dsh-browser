@@ -13,6 +13,7 @@ export const browserGoto: BrowserOperation = {
       return {
         title: `Navigate to ${finalUrl}`,
         output: `Navigated to ${finalUrl}${dom.output}`,
+        observation: dom.observation,
         metadata: { url: finalUrl, domId: dom.domId },
       }
     }, context.signal)
@@ -30,6 +31,7 @@ export const browserRefresh: BrowserOperation = {
       return {
         title: "Refresh page",
         output: `Page refreshed${dom.output}`,
+        observation: dom.observation,
         metadata: { url: finalUrl, domId: dom.domId },
       }
     }, context.signal)
@@ -67,6 +69,7 @@ export const browserRestoreState: BrowserOperation = {
       return {
         title: `Revisit ${stateId}`,
         output: `Revisited ${finalUrl} from ${stateId}. Only the URL was restored; transient page state was not.${dom.output}`,
+        observation: dom.observation,
         metadata: { url: finalUrl, domId: dom.domId },
       }
     }, context.signal)

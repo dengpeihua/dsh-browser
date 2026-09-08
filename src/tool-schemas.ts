@@ -1,6 +1,6 @@
 import type { ParameterSchemaSpec, ValueSchemaSpec } from "@deepseek-ai/dsh-tools"
 
-export const TOOL_IDS = [
+export const BROWSER_TOOL_IDS = [
   "browser_start",
   "browser_goto",
   "browser_refresh",
@@ -17,6 +17,9 @@ export const TOOL_IDS = [
   "browser_view_elements",
   "browser_wait",
 ] as const
+
+export const MEMORY_TOOL_IDS = ["browser_record_facts", "browser_recall"] as const
+export const TOOL_IDS = [...BROWSER_TOOL_IDS, ...MEMORY_TOOL_IDS] as const
 
 export type BrowserToolId = (typeof TOOL_IDS)[number]
 
@@ -71,6 +74,27 @@ export const PARAMETER_SCHEMAS: Record<BrowserToolId, ParameterSchemaSpec> = {
   browser_wait: {
     seconds: { type: "number", required: true, description: "Seconds to wait before continuing." },
   },
+  browser_record_facts: {
+    observations: { type: "array", required: true, description: "Review 1-30 archived observations. Save ALL relevant task facts before allowing their DOM to be retired; use an explicit reason with empty facts only for irrelevant pages.", items: {
+      type: "object", additionalProperties: false, properties: {
+        observationId: { type: "string", required: true, description: "obs-... ID from browser task memory or browser_recall. Source URL/time is resolved by the host." },
+        facts: { type: "array", required: true, items: { type: "object", additionalProperties: false, properties: {
+          entity: { type: "string", required: true, description: "Exact entity wording present in the evidence quote." },
+          attribute: { type: "string", required: true, description: "Stable field name, e.g. price. Reuse for updates." },
+          value: { type: "string", required: true, description: "Exact value including currency/unit as shown in the evidence; do not invent conversions." },
+          evidence: { type: "string", required: true, description: "Exact quote from this observation containing both entity and value (at most 1200 characters)." },
+        } } },
+        reason: { type: "string", description: "Required if facts is empty: why this observation contains no information needed for the user's task." },
+      },
+    } },
+  },
+  browser_recall: {
+    query: { type: "string", description: "Optional case-insensitive search over saved entities, attributes, values and source URLs." },
+    includeHistory: { type: "boolean", description: "Include earlier observed values as well as current per-source values." },
+    observationId: { type: "string", description: "Read an archived observation instead of facts; usable after navigation, compaction or browser restart." },
+    offset: { type: "integer", description: "Zero-based record offset for facts/unreviewed sources, or character offset when reading an observation." },
+    limit: { type: "integer", description: "Facts/unreviewed sources per page, 1-30; defaults to 20. Observation reads return up to 12000 characters." },
+  },
 }
 
 export const TOOL_OUTPUT_SCHEMA = {
@@ -95,6 +119,7 @@ export const TOOL_OUTPUT_SCHEMA = {
       },
     },
     metadata: { type: "json", required: true },
+    browserContext: { type: "json" },
     images: { type: "array", required: true, items: { type: "json" } },
   },
 } as const satisfies ValueSchemaSpec

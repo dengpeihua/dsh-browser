@@ -4,10 +4,12 @@ import { defineTool, type ToolRunContext } from "@deepseek-ai/dsh-tools"
 import type {} from "@deepseek-ai/dsh-user-approval"
 import { BROWSER_OPERATIONS } from "./browser/operations/index.js"
 import type { BrowserAttachment } from "./browser/runtime.js"
-import { BrowserManager, type BrowserLaunchConfig } from "./browser/manager.js"
+import type {} from "./browser-runtime.js"
+import type { BrowserContextMeta } from "./browser-observation.js"
 import type { ResolvedConfig } from "./config.js"
 import { createOutputLimiter } from "./output-limiter.js"
-import { PARAMETER_SCHEMAS, TOOL_IDS, TOOL_OUTPUT_SCHEMA, type BrowserToolId } from "./tool-schemas.js"
+import { guardBrowserMemory } from "./browser-memory.js"
+import { PARAMETER_SCHEMAS, BROWSER_TOOL_IDS, TOOL_OUTPUT_SCHEMA, type BrowserToolId } from "./tool-schemas.js"
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
@@ -25,6 +27,7 @@ interface BrowserToolValue {
   artifacts: BrowserArtifact[]
   metadata: JsonValue
   images: JsonValue[]
+  browserContext?: JsonValue
 }
 
 const MUTATING_TOOLS = new Set<BrowserToolId>([
@@ -103,8 +106,11 @@ function renderValue(value: BrowserToolValue) {
   const guidance = value.next_actions.length > 0
     ? `\n\nNext actions:\n${value.next_actions.map(action => `- ${action}`).join("\n")}`
     : ""
+  const observation = (value.browserContext as unknown as BrowserContextMeta | undefined)?.observation
+  if (observation && !value.output.endsWith(observation.output)) throw new Error("Browser observation must be the tool output suffix")
+  const texts = observation ? [value.output.slice(0, -observation.output.length), observation.output, guidance] : [`${value.output}${guidance}`]
   return [
-    { type: "text" as const, text: `${value.output}${guidance}` },
+    ...texts.filter(Boolean).map(text => ({ type: "text" as const, text })),
     ...value.images.map(image => ({ type: "image" as const, attachment: image as unknown as ImageAttachmentRef })),
   ]
 }
@@ -139,18 +145,13 @@ async function requestApproval(ctx: CordisContext, config: ResolvedConfig, toolI
 
 /** Register all browser operations directly in the DSH typed tool registry. */
 export function registerBrowserTools(ctx: CordisContext, config: ResolvedConfig): Array<() => void> {
-  if (BROWSER_OPERATIONS.length !== TOOL_IDS.length) throw new Error("Browser operation/schema count mismatch")
+  if (BROWSER_OPERATIONS.length !== BROWSER_TOOL_IDS.length) throw new Error("Browser operation/schema count mismatch")
+  const activeCalls = new Set<string>()
   const outputLimiter = createOutputLimiter({
     maxLines: config.scriptMaxLines,
     maxBytes: config.scriptMaxBytes,
     ...(config.outputDir ? { outputDir: config.outputDir } : {}),
   })
-  const launchConfig: BrowserLaunchConfig = {
-    ...(config.chromePath ? { executablePath: config.chromePath } : {}),
-    headless: config.headless,
-    noSandbox: config.noSandbox,
-    viewport: { width: config.viewportWidth, height: config.viewportHeight },
-  }
 
   return BROWSER_OPERATIONS.map(operation => ctx.tools.register(defineTool({
     name: operation.id,
@@ -159,21 +160,33 @@ export function registerBrowserTools(ctx: CordisContext, config: ResolvedConfig)
     output: {
       schema: TOOL_OUTPUT_SCHEMA,
       render: (_args, value) => renderValue(value as unknown as BrowserToolValue),
-      presentationMeta: (_args, value) => ({ title: value.summary, status: value.status, artifacts: value.artifacts }),
+      presentationMeta: (_args, value) => {
+        const { summary, status, artifacts, browserContext } = value as unknown as BrowserToolValue
+        return jsonValue({ title: summary, status, artifacts, ...(browserContext ? { browserContext } : {}) })
+      },
     },
     timeoutMs: config.toolTimeoutMs,
     async execute(args, exec): Promise<BrowserToolValue> {
       validateRuntimeArgs(operation.id, args, config)
       const sessionId = scopeId(exec)
+      let ownsCall = false
       try {
-        await requestApproval(ctx, config, operation.id, exec)
         if (exec.signal.aborted) throw exec.signal.reason ?? new Error("Browser tool execution was aborted")
+        if (!exec.agent?.session) throw new Error("Browser tools require a DSH Session for task memory")
+        if (activeCalls.has(sessionId)) throw new Error("A browser call is already running for this Session. Wait for its observation and review it before another browser action.")
+        activeCalls.add(sessionId)
+        ownsCall = true
+        if (operation.id !== "browser_view_elements") guardBrowserMemory(exec.agent.session)
+        await requestApproval(ctx, config, operation.id, exec)
+        exec.signal.throwIfAborted()
+        const manager = ctx.browserRuntime.getManager(sessionId)
         const result = await operation.execute(args as Record<string, unknown>, {
-          manager: BrowserManager.getInstance(sessionId, launchConfig),
+          manager,
           signal: exec.signal,
           outputLimiter,
         })
         const { refs, artifacts } = await persistAttachments(ctx, result.attachments)
+        const imageState = result.imageState
         return {
           status: "success",
           summary: result.title,
@@ -182,10 +195,17 @@ export function registerBrowserTools(ctx: CordisContext, config: ResolvedConfig)
           artifacts,
           metadata: jsonValue(result.metadata),
           images: refs.map(jsonValue),
+          browserContext: jsonValue({
+            version: 1,
+            ...(result.observation ? { observation: result.observation } : {}),
+            ...(imageState ? { imageRuntimeId: imageState.runtimeId, imageDomId: imageState.domId, imageTabId: imageState.tabId } : {}),
+          }),
         }
       } catch (error) {
         if (exec.signal.aborted) throw exec.signal.reason ?? error
         throw failureMessage(operation.id, error)
+      } finally {
+        if (ownsCall) activeCalls.delete(sessionId)
       }
     },
   })))

@@ -7,6 +7,7 @@
  */
 
 import { existsSync } from "node:fs"
+import { randomUUID } from "node:crypto"
 import type { Browser, Page, CDPSession } from "puppeteer-core"
 import { DomService } from "./dom/service.js"
 import { CDPClient } from "./cdp/client.js"
@@ -28,6 +29,7 @@ export interface TabState {
   cdpClient: CDPClient
   domService: DomService
   lastDomId?: string
+  contextDeltas?: number
 }
 
 /** Launch settings resolved once by the DSH plugin and fixed for one Session manager. */
@@ -36,16 +38,11 @@ export interface BrowserLaunchConfig {
   headless: boolean
   noSandbox: boolean
   viewport: { width: number; height: number }
-}
-
-const DEFAULT_LAUNCH_CONFIG: BrowserLaunchConfig = {
-  headless: false,
-  noSandbox: false,
-  viewport: { width: 1280, height: 900 },
+  maxContextDeltas: number
 }
 
 export class BrowserManager {
-  private static instances = new Map<string, BrowserManager>()
+  runtimeId = randomUUID()
   private browser: Browser | null = null
   private tabs = new Map<string, TabState>()
   private pageRegistrations = new WeakMap<Page, Promise<TabState>>()
@@ -56,39 +53,10 @@ export class BrowserManager {
   private cleanupPromise: Promise<void> | undefined
   private guideShown = false
 
-  private constructor(
-    private readonly scopeID: string,
-    private readonly launchConfig: BrowserLaunchConfig,
-  ) {}
+  constructor(private readonly launchConfig: BrowserLaunchConfig) {}
 
-  /**
-   * Each Session scope has an independent manager, Chrome and a tab status; one example is still used in the same Session.
-   * The non-parameter entry is for non-conference calls only, and browser tools must be ctx.sessionID prominently.
-   */
-  /**
-   * Session lookup entry point. Each session owns its own active tab and cookie state,
-   * so callers cannot access browser state belonging to another session.
-   */
-  static getInstance(scopeID = "default", launchConfig: BrowserLaunchConfig = DEFAULT_LAUNCH_CONFIG): BrowserManager {
-    const existing = BrowserManager.instances.get(scopeID)
-    if (existing) return existing
-    const manager = new BrowserManager(scopeID, launchConfig)
-    BrowserManager.instances.set(scopeID, manager)
-    return manager
-  }
-
-  /** Release one DSH Session's browser without touching any other Session. */
-  static async cleanupScope(scopeID: string): Promise<void> {
-    const manager = BrowserManager.instances.get(scopeID)
-    if (manager) await manager.cleanup()
-  }
-
-  /** Release every browser owned by this plugin instance during Cordis unload. */
-  static async cleanupAll(): Promise<void> {
-    const settled = await Promise.allSettled([...BrowserManager.instances.values()].map(manager => manager.cleanup()))
-    const errors = settled.flatMap(result => result.status === "rejected" ? [result.reason] : [])
-    if (errors.length > 0) throw new AggregateError(errors, "Failed to clean up all browser Sessions")
-  }
+  /** Bound delta chains with periodic complete observations. */
+  get maxContextDeltas(): number { return this.launchConfig.maxContextDeltas }
 
   /** Return true once per DSH Session so the browser usage guide is not repeated on every start. */
   consumeGuide(): boolean {
@@ -311,6 +279,7 @@ export class BrowserManager {
   }
 
   private reset(): void {
+    this.runtimeId = randomUUID()
     this.tabs.clear()
     this.pageRegistrations = new WeakMap()
     this.activeTabId = null
@@ -379,8 +348,8 @@ export class BrowserManager {
   }
 
   /**
-   * Close path: dispose each tab's DomService and CDPClient, close the browser,
-   * then remove this session instance.
+   * Dispose each tab's DOM/CDP resources and close the browser. BrowserRuntime
+   * removes the Session entry after this promise settles.
    */
   cleanup(): Promise<void> {
     if (!this.cleanupPromise) this.cleanupPromise = this.cleanupInternal()
@@ -433,9 +402,6 @@ export class BrowserManager {
       this.activeTabId = null
       this.browser = null
       this.guideShown = false
-      if (BrowserManager.instances.get(this.scopeID) === this) {
-        BrowserManager.instances.delete(this.scopeID)
-      }
     }
     if (errors.length > 0) throw new AggregateError(errors, "Failed to clean up browser resources")
   }

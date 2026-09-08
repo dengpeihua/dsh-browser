@@ -50,6 +50,7 @@ npm test
 
 ```powershell
 npm run test:smoke
+npm run test:host
 npm run verify:installed
 ```
 
@@ -109,6 +110,7 @@ For changes that affect real browser behavior, also run:
 
 ```powershell
 npm run test:smoke
+npm run test:host
 npm run verify:installed
 ```
 

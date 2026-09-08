@@ -18,6 +18,7 @@ export const browserNewTab: BrowserOperation = {
       return {
         title: `New tab${url ? ` → ${finalUrl}` : ""}`,
         output: `Opened new tab${url ? ` and navigated to ${finalUrl}` : ""}${dom.output}`,
+        observation: dom.observation,
         metadata: { tabId: tab.id, url: finalUrl, domId: dom.domId },
       }
     }, context.signal)
@@ -36,6 +37,7 @@ export const browserSwitchTab: BrowserOperation = {
       return {
         title: `Switch to ${tabId}`,
         output: `Switched to tab ${tabId}: ${tab.page.url()}${dom.output}`,
+        observation: dom.observation,
         metadata: { tabId, domId: dom.domId },
       }
     }, context.signal)
@@ -52,12 +54,16 @@ export const browserCloseTab: BrowserOperation = {
       const targets = provided.length > 0 ? provided : [context.manager.getActiveTab().id]
       for (const id of targets) await context.manager.closeTab(id)
       let domOutput = ""
+      let observation
       if (context.manager.hasActiveTab()) {
-        domOutput = isLast() ? (await getPageDom(context.manager)).output : skippedDomOutput().output
+        const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
+        domOutput = dom.output
+        observation = dom.observation
       }
       return {
         title: `Close tab${targets.length > 1 ? "s" : ""}: ${targets.join(", ")}`,
         output: `Closed tab${targets.length > 1 ? "s" : ""}: ${targets.join(", ")}${domOutput}`,
+        observation,
         metadata: {},
       }
     }, context.signal)

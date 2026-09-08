@@ -2,6 +2,7 @@ import type { OutputLimiter } from "../output-limiter.js"
 import type { BrowserToolId } from "../tool-schemas.js"
 import type { TabState } from "./manager.js"
 import { BrowserManager } from "./manager.js"
+import type { BrowserObservation } from "../browser-observation.js"
 
 export interface BrowserAttachment {
   mime: "image/jpeg" | "image/png" | "image/webp" | "image/gif"
@@ -14,6 +15,8 @@ interface BrowserOperationResult {
   output: string
   metadata: Record<string, unknown>
   attachments?: BrowserAttachment[]
+  observation?: BrowserObservation
+  imageState?: { runtimeId: string; domId: string; tabId: string }
 }
 
 interface BrowserOperationContext {

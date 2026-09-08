@@ -75,7 +75,7 @@ export const browserClick: BrowserOperation = {
           await waitForBrowserDelay(200, context.signal)
           const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
           const label = elementData.renderedLine?.trim() ?? `option [${elementIndex}]`
-          return { title: `Select ${label}`, output: `Selected ${label}${dom.output}`, metadata: {} }
+          return { title: `Select ${label}`, output: `Selected ${label}${dom.output}`, observation: dom.observation, metadata: {} }
         }
 
         const isHit = await tab.domService.hitTestAtPoint(elementData.node)
@@ -89,7 +89,7 @@ export const browserClick: BrowserOperation = {
         await waitForBrowserDelay(500, context.signal)
         const dom = isLast() ? await getPageDom(context.manager) : skippedDomOutput()
         const label = elementData.renderedLine?.trim() ?? `element [${elementIndex}]`
-        return { title: `Click ${label}`, output: `Clicked ${label}${dom.output}`, metadata: {} }
+        return { title: `Click ${label}`, output: `Clicked ${label}${dom.output}`, observation: dom.observation, metadata: {} }
       })
     }, context.signal)
   },
@@ -140,6 +140,7 @@ export const browserInput: BrowserOperation = {
         return {
           title: `Input "${text}" into [${elementIndex}]`,
           output: `Input "${text}" into ${label}${pressEnter ? " and pressed Enter" : ""}${dom.output}`,
+          observation: dom.observation,
           metadata: {},
         }
       })

@@ -8,7 +8,7 @@ The DSH browser plugin controls a real Chromium instance isolated to the current
 - DOM markers \`[N]\` are clickable and \`<N>\` are inputs.
 - Visual markers \`[view:ID]\` can be inspected with \`browser_view_elements\`.
 - Use the container index from \`[container:N]\` with the scroll tools.
-- DOM updates replace earlier snapshots, so record important facts before the next browser action.
+- The host keeps current DOM and required baselines. Save relevant entities, values and exact source quotes with browser_record_facts before observations are retired; browser_recall retrieves saved facts or archived pages. Irrelevant observations require an explicit reason. Pending reviews pause further browsing.
 - Prefer \`browser_click\` and \`browser_input\`; use \`browser_execute_script\` for targeted inspection.
 - Call \`browser_restore_state\` with a stateId to revisit its cached URL; transient page state is not restored.`
 
@@ -25,6 +25,7 @@ export const browserStart: BrowserOperation = {
       return {
         title: `Browser started → ${finalUrl}`,
         output: `${guide}Navigated to ${finalUrl}${dom.output}`,
+        observation: dom.observation,
         metadata: { url: finalUrl, domId: dom.domId },
       }
     }, context.signal)
