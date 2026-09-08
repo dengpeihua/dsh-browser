@@ -1,3 +1,5 @@
+![dsh-browser — Native browser agent for DeepSeek Harness](assets/dsh-browser-banner-v3.png)
+
 <h1 align="center">dsh-browser-plugin</h1>
 
 <p align="center">Native Chromium browser Agent tools for DeepSeek Harness</p>
